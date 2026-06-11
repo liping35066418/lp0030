@@ -1,19 +1,20 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   ZoomIn, ZoomOut, Maximize2, Minimize2, Calendar, Camera,
   FolderPlus, ListTodo, Filter, Search, X, ChevronDown,
-  Save, Undo2, Redo2, LayoutGrid,
+  Save, Undo2, Redo2, LayoutGrid, Activity,
 } from 'lucide-react';
 import { useGanttStore } from '@/store/ganttStore';
 import { VIEW_SCALE_CONFIG } from '@/types/gantt';
 import type { ViewScale } from '@/types/gantt';
 import { cn } from '@/lib/utils';
+import { calculateWeightedProgress } from '@/lib/gantt-utils';
 
 const Toolbar = memo(function Toolbar() {
   const {
     currentProject, projects, setViewScale, viewScale, pixelPerUnit, zoom, setZoom,
     isFullscreen, set, showProjectModal, showTaskModal, showSnapshotModal,
-    fetchProjectDetail, batchSet,
+    fetchProjectDetail, batchSet, criticalPathEnabled, tasks, filterGroupId, searchText,
   } = useGanttStore();
 
   const toggleFullscreen = () => {
@@ -28,6 +29,16 @@ const Toolbar = memo(function Toolbar() {
 
   const zoomCfg = VIEW_SCALE_CONFIG[viewScale];
   const zoomPercent = Math.round(((pixelPerUnit - zoomCfg.minZoom) / (zoomCfg.maxZoom - zoomCfg.minZoom)) * 100);
+
+  const visibleTasks = useMemo(() => {
+    return tasks.filter(t => {
+      if (filterGroupId && t.groupId !== filterGroupId) return false;
+      if (searchText && !t.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      return true;
+    });
+  }, [tasks, filterGroupId, searchText]);
+
+  const overallProgress = useMemo(() => calculateWeightedProgress(visibleTasks), [visibleTasks]);
 
   return (
     <div className="sticky top-0 z-40 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-900/95 backdrop-blur-md border-b border-slate-700/80 px-3 py-2.5 flex items-center gap-2 shadow-lg">
@@ -149,6 +160,32 @@ const Toolbar = memo(function Toolbar() {
           title="快速保存快照"
         >
           <Save size={16} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 pr-3 border-r border-slate-700/70">
+        <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/60 rounded-md border border-slate-700/50">
+          <span className="text-[11px] text-slate-400">整体进度</span>
+          <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-300"
+              style={{ width: `${overallProgress}%` }}
+            />
+          </div>
+          <span className="text-[11px] font-semibold text-emerald-400 tabular-nums w-9 text-right">{overallProgress}%</span>
+        </div>
+        <button
+          className={cn(
+            'p-1.5 rounded-md border transition-colors flex items-center gap-1.5',
+            criticalPathEnabled
+              ? 'bg-rose-600/90 hover:bg-rose-500 border-rose-500 text-white'
+              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300',
+          )}
+          onClick={() => set('criticalPathEnabled', !criticalPathEnabled)}
+          title="关键路径分析"
+        >
+          <Activity size={16} />
+          <span className="text-[11px] font-medium">关键路径</span>
         </button>
       </div>
 

@@ -2,7 +2,7 @@ import { useMemo, useRef, memo, useState, useEffect } from 'react';
 import type { Task, FlatTask, DraggingState } from '@/types/gantt';
 import { STATUS_CONFIG, TYPE_CONFIG } from '@/types/gantt';
 import { useGanttStore } from '@/store/ganttStore';
-import { dateToPixel, formatDate, formatShortDate, rgbAlpha, lighten } from '@/lib/gantt-utils';
+import { dateToPixel, formatDate, formatShortDate, rgbAlpha, lighten, calculateCriticalPath } from '@/lib/gantt-utils';
 import { GripVertical, Link2, Plus, Trash2, Edit3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,10 +18,13 @@ interface BarProps {
   onDepClick: (taskId: string, e: React.MouseEvent) => void;
   previewRect: DOMRect | null;
   setPreviewRect: (r: DOMRect | null) => void;
+  isCritical: boolean;
+  criticalPathEnabled: boolean;
 }
 
 const TaskBar = memo(function TaskBar({
   task, rowIndex, barLeft, barWidth, onMouseDown, onDepHoverId, onDepClick, previewRect, setPreviewRect,
+  isCritical, criticalPathEnabled,
 }: BarProps) {
   const {
     selectedTaskId, hoveredTaskId, set, rowHeight,
@@ -72,7 +75,10 @@ const TaskBar = memo(function TaskBar({
 
   return (
     <div
-      className="absolute"
+      className={cn(
+        'absolute transition-opacity duration-200',
+        criticalPathEnabled && !isCritical ? 'opacity-30' : 'opacity-100',
+      )}
       style={{ left: actualLeft, top: rowIndex * rowHeight + (isMilestone ? topPad : topPad), width: actualWidth, height: isMilestone ? 22 : 26 }}
       onMouseEnter={(_e) => {
         void _e;
@@ -89,12 +95,19 @@ const TaskBar = memo(function TaskBar({
         <div
           ref={barRef}
           className={cn(
-            'relative w-6 h-6 mx-auto cursor-grab active:cursor-grabbing transition-transform',
+            'relative w-6 h-6 mx-auto cursor-grab active:cursor-grabbing transition-all',
             isSel ? 'scale-110' : '',
           )}
-          style={{ transform: `rotate(45deg)`, background: barBg, boxShadow: `0 2px 8px ${rgbAlpha(barBg, 0.45)}`, border: isSel ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)' }}
+          style={{
+            transform: `rotate(45deg)`,
+            background: barBg,
+            boxShadow: isCritical
+              ? `0 0 16px ${rgbAlpha('#f43f5e', 0.8)}, 0 2px 8px ${rgbAlpha(barBg, 0.45)}`
+              : `0 2px 8px ${rgbAlpha(barBg, 0.45)}`,
+            border: isSel ? '2px solid #fff' : isCritical ? '2px solid #f43f5e' : '1px solid rgba(255,255,255,0.3)',
+          }}
           onMouseDown={(e) => { e.preventDefault(); onMouseDown(e, 'move', task.id); }}
-          title={`${task.name} · ${formatDate(task.startDate)} · ${typeCfg.label}`}
+          title={`${task.name} · ${formatDate(task.startDate)} · ${typeCfg.label}${isCritical ? ' · 关键路径' : ''}`}
         />
       ) : (
         <div
@@ -107,8 +120,10 @@ const TaskBar = memo(function TaskBar({
           )}
           style={{
             background: `linear-gradient(180deg, ${lighten(barBg, 0.1)}, ${barBg} 40%, ${barBg})`,
-            boxShadow: `0 2px 10px ${rgbAlpha(barBg, 0.35)}`,
-            border: `1px solid ${lighten(barBg, -0.25)}`,
+            boxShadow: isCritical
+              ? `0 0 16px ${rgbAlpha('#f43f5e', 0.6)}, 0 2px 10px ${rgbAlpha(barBg, 0.35)}`
+              : `0 2px 10px ${rgbAlpha(barBg, 0.35)}`,
+            border: isCritical ? `2px solid #f43f5e` : `1px solid ${lighten(barBg, -0.25)}`,
           }}
           onMouseDown={(e) => { if ((e.target as HTMLElement).dataset.nodrag) return; e.preventDefault(); onMouseDown(e, 'move', task.id); }}
           onWheel={handleProgressWheel}
@@ -263,7 +278,7 @@ const TaskBarsLayer = memo(function TaskBarsLayer({
   flatList, onMouseDown, onDepHoverId, setOnDepHoverId, onDepClick,
   totalWidth, totalHeight, dragging, previewRect, setPreviewRect,
 }: Props) {
-  const { viewScale, axisStart, pixelPerUnit, filterGroupId, searchText, currentProject } = useGanttStore();
+  const { viewScale, axisStart, pixelPerUnit, filterGroupId, searchText, currentProject, criticalPathEnabled, dependencies } = useGanttStore();
 
   const bars = useMemo(() => {
     const result: Array<{ task: FlatTask; left: number; width: number; row: number }> = [];
@@ -282,6 +297,14 @@ const TaskBarsLayer = memo(function TaskBarsLayer({
     }
     return result;
   }, [flatList, axisStart, viewScale, pixelPerUnit, filterGroupId, searchText, currentProject?.timezone]);
+
+  const criticalPathResult = useMemo(() => {
+    if (!criticalPathEnabled) return { criticalTaskIds: new Set<string>(), criticalDepIds: new Set<string>(), projectDuration: 0 };
+    const visibleTaskIds = new Set(bars.map(b => b.task.id));
+    const visibleDeps = dependencies.filter(d => visibleTaskIds.has(d.fromTaskId) && visibleTaskIds.has(d.toTaskId));
+    const visibleTasks = bars.map(b => b.task);
+    return calculateCriticalPath(visibleTasks, visibleDeps);
+  }, [criticalPathEnabled, bars, dependencies]);
 
   return (
     <div
@@ -311,6 +334,8 @@ const TaskBarsLayer = memo(function TaskBarsLayer({
             onDepClick={onDepClick}
             previewRect={previewRect}
             setPreviewRect={setPreviewRect}
+            isCritical={criticalPathEnabled && criticalPathResult.criticalTaskIds.has(task.id)}
+            criticalPathEnabled={criticalPathEnabled}
           />
         </div>
       ))}

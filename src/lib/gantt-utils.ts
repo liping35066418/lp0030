@@ -1,4 +1,4 @@
-import type { ViewScale, Task, TreeNode, FlatTask } from '@/types/gantt';
+import type { ViewScale, Task, TreeNode, FlatTask, Dependency } from '@/types/gantt';
 
 export function getTimezoneOffset(timezone: string, date: Date | string): number {
   if (!timezone || timezone === 'UTC') return 0;
@@ -373,4 +373,172 @@ export function debounce<T extends (...args: unknown[]) => void>(fn: T, wait: nu
 
 export function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export interface CriticalPathResult {
+  criticalTaskIds: Set<string>;
+  criticalDepIds: Set<string>;
+  projectDuration: number;
+}
+
+export function calculateCriticalPath(
+  tasks: Task[],
+  dependencies: Dependency[],
+): CriticalPathResult {
+  const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+  const inDeps = new Map<string, Dependency[]>();
+  const outDeps = new Map<string, Dependency[]>();
+  for (const t of tasks) {
+    inDeps.set(t.id, []);
+    outDeps.set(t.id, []);
+  }
+  for (const d of dependencies) {
+    if (!taskMap.has(d.fromTaskId) || !taskMap.has(d.toTaskId)) continue;
+    outDeps.get(d.fromTaskId)!.push(d);
+    inDeps.get(d.toTaskId)!.push(d);
+  }
+
+  const earliestStart = new Map<string, number>();
+  const earliestFinish = new Map<string, number>();
+
+  const topoOrder: string[] = [];
+  const inDegree = new Map<string, number>();
+  for (const t of tasks) {
+    inDegree.set(t.id, inDeps.get(t.id)!.length);
+  }
+  const queue: string[] = [];
+  for (const t of tasks) {
+    if (inDegree.get(t.id) === 0) queue.push(t.id);
+  }
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    topoOrder.push(id);
+    for (const d of outDeps.get(id)!) {
+      const next = d.toTaskId;
+      inDegree.set(next, inDegree.get(next)! - 1);
+      if (inDegree.get(next) === 0) queue.push(next);
+    }
+  }
+
+  for (const id of topoOrder) {
+    const task = taskMap.get(id)!;
+    const dur = Math.max(0, task.duration || 0);
+    let es = 0;
+    const ins = inDeps.get(id)!;
+    for (const d of ins) {
+      const fromTask = taskMap.get(d.fromTaskId);
+      if (!fromTask) continue;
+      const fromEf = earliestFinish.get(d.fromTaskId) ?? 0;
+      const fromEs = earliestStart.get(d.fromTaskId) ?? 0;
+      const lag = d.lag || 0;
+      let constraint = 0;
+      switch (d.type) {
+        case 'fs': constraint = fromEf + lag; break;
+        case 'ss': constraint = fromEs + lag; break;
+        case 'ff': constraint = fromEf + lag - dur; break;
+        case 'sf': constraint = fromEs + lag - dur; break;
+      }
+      if (constraint > es) es = constraint;
+    }
+    earliestStart.set(id, es);
+    earliestFinish.set(id, es + dur);
+  }
+
+  let maxEf = 0;
+  for (const ef of earliestFinish.values()) {
+    if (ef > maxEf) maxEf = ef;
+  }
+
+  const latestFinish = new Map<string, number>();
+  const latestStart = new Map<string, number>();
+
+  const reverseOrder = [...topoOrder].reverse();
+  for (const id of reverseOrder) {
+    const task = taskMap.get(id)!;
+    const dur = Math.max(0, task.duration || 0);
+    let lf = maxEf;
+    const outs = outDeps.get(id)!;
+    for (const d of outs) {
+      const toTask = taskMap.get(d.toTaskId);
+      if (!toTask) continue;
+      const toLf = latestFinish.get(d.toTaskId) ?? maxEf;
+      const toLs = latestStart.get(d.toTaskId) ?? maxEf;
+      const lag = d.lag || 0;
+      let constraint = maxEf;
+      switch (d.type) {
+        case 'fs': constraint = toLs - lag; break;
+        case 'ss': constraint = toLs - lag + dur; break;
+        case 'ff': constraint = toLf - lag; break;
+        case 'sf': constraint = toLf - lag + dur; break;
+      }
+      if (constraint < lf) lf = constraint;
+    }
+    latestFinish.set(id, lf);
+    latestStart.set(id, lf - dur);
+  }
+
+  const criticalTaskIds = new Set<string>();
+  for (const id of topoOrder) {
+    const es = earliestStart.get(id) ?? 0;
+    const ls = latestStart.get(id) ?? 0;
+    const slack = ls - es;
+    if (Math.abs(slack) < 0.001) {
+      criticalTaskIds.add(id);
+    }
+  }
+
+  const criticalDepIds = new Set<string>();
+  for (const d of dependencies) {
+    if (criticalTaskIds.has(d.fromTaskId) && criticalTaskIds.has(d.toTaskId)) {
+      const fromEf = earliestFinish.get(d.fromTaskId) ?? 0;
+      const fromEs = earliestStart.get(d.fromTaskId) ?? 0;
+      const toEs = earliestStart.get(d.toTaskId) ?? 0;
+      const toEf = earliestFinish.get(d.toTaskId) ?? 0;
+      const lag = d.lag || 0;
+      let isCritical = false;
+      switch (d.type) {
+        case 'fs':
+          isCritical = Math.abs(fromEf + lag - toEs) < 0.001;
+          break;
+        case 'ss':
+          isCritical = Math.abs(fromEs + lag - toEs) < 0.001;
+          break;
+        case 'ff':
+          isCritical = Math.abs(fromEf + lag - toEf) < 0.001;
+          break;
+        case 'sf':
+          isCritical = Math.abs(fromEs + lag - toEf) < 0.001;
+          break;
+      }
+      if (isCritical) criticalDepIds.add(d.id);
+    }
+  }
+
+  if (criticalTaskIds.size === 0 && tasks.length > 0) {
+    let maxDur = 0;
+    let maxId = '';
+    for (const t of tasks) {
+      if ((t.duration || 0) > maxDur) {
+        maxDur = t.duration || 0;
+        maxId = t.id;
+      }
+    }
+    if (maxId) criticalTaskIds.add(maxId);
+  }
+
+  return { criticalTaskIds, criticalDepIds, projectDuration: maxEf };
+}
+
+export function calculateWeightedProgress(tasks: Task[]): number {
+  let totalWeight = 0;
+  let weightedProgress = 0;
+  for (const t of tasks) {
+    if (t.type === 'summary') continue;
+    const dur = Math.max(0, t.duration || 0);
+    totalWeight += dur;
+    weightedProgress += dur * (t.progress || 0);
+  }
+  if (totalWeight === 0) return 0;
+  return Math.round((weightedProgress / totalWeight) * 100) / 100;
 }

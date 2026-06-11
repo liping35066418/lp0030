@@ -21,6 +21,7 @@ interface GanttState {
   expandedIds: Set<string>;
   filterGroupId: string | null;
   searchText: string;
+  criticalPathEnabled: boolean;
 
   viewScale: ViewScale;
   pixelPerUnit: number;
@@ -92,6 +93,7 @@ export const useGanttStore = create<GanttState>((set, get) => ({
   expandedIds: new Set(),
   filterGroupId: null,
   searchText: '',
+  criticalPathEnabled: false,
 
   viewScale: 'week',
   pixelPerUnit: 120,

@@ -7,8 +7,6 @@ interface Props {
   flatList: FlatTask[];
   totalWidth: number;
   totalHeight: number;
-  scrollLeft: number;
-  scrollTop: number;
   depFromId: string | null;
   mousePos: { x: number; y: number } | null;
 }
@@ -23,6 +21,7 @@ function calcEndpoints(
   viewScale: string,
   pixelPerUnit: number,
   rowHeight: number,
+  timezone?: string,
 ): { x1: number; y1: number; x2: number; y2: number; cx1: number; cy1: number; cx2: number; cy2: number } | null {
   const type = dep.type as DependencyType;
   const isMileFrom = fromTask.type === 'milestone';
@@ -31,10 +30,10 @@ function calcEndpoints(
   const yTo = toRowIdx * rowHeight + rowHeight / 2;
 
   let x1 = 0, x2 = 0;
-  const fromStart = dateToPixel(fromTask.startDate, axisStart, viewScale as never, pixelPerUnit);
-  const fromEnd = dateToPixel(fromTask.endDate, axisStart, viewScale as never, pixelPerUnit) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
-  const toStart = dateToPixel(toTask.startDate, axisStart, viewScale as never, pixelPerUnit);
-  const toEnd = dateToPixel(toTask.endDate, axisStart, viewScale as never, pixelPerUnit) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
+  const fromStart = dateToPixel(fromTask.startDate, axisStart, viewScale as never, pixelPerUnit, timezone);
+  const fromEnd = dateToPixel(fromTask.endDate, axisStart, viewScale as never, pixelPerUnit, timezone) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
+  const toStart = dateToPixel(toTask.startDate, axisStart, viewScale as never, pixelPerUnit, timezone);
+  const toEnd = dateToPixel(toTask.endDate, axisStart, viewScale as never, pixelPerUnit, timezone) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
 
   if (isMileFrom) {
     const mileCenter = (fromStart + fromEnd) / 2;
@@ -74,9 +73,9 @@ function calcEndpoints(
 }
 
 const DependencyLines = memo(function DependencyLines({
-  flatList, totalWidth, totalHeight, scrollLeft, scrollTop, depFromId, mousePos,
+  flatList, totalWidth, totalHeight, depFromId, mousePos,
 }: Props) {
-  const { dependencies, rowHeight, viewScale, axisStart, pixelPerUnit, hoveredTaskId, selectedTaskId } = useGanttStore();
+  const { dependencies, rowHeight, viewScale, axisStart, pixelPerUnit, hoveredTaskId, selectedTaskId, scrollLeft, scrollTop, currentProject } = useGanttStore();
 
   const rowIdxMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -97,7 +96,7 @@ const DependencyLines = memo(function DependencyLines({
       const fIdx = rowIdxMap.get(dep.fromTaskId);
       const tIdx = rowIdxMap.get(dep.toTaskId);
       if (!fromTask || !toTask || fIdx === undefined || tIdx === undefined) continue;
-      const pts = calcEndpoints(dep, fromTask, toTask, fIdx, tIdx, axisStart, viewScale, pixelPerUnit, rowHeight);
+      const pts = calcEndpoints(dep, fromTask, toTask, fIdx, tIdx, axisStart, viewScale, pixelPerUnit, rowHeight, currentProject?.timezone);
       if (!pts) continue;
       const path = `M ${pts.x1} ${pts.y1} C ${pts.cx1} ${pts.cy1}, ${pts.cx2} ${pts.cy2}, ${pts.x2} ${pts.y2}`;
       const arrow = { x: pts.x2, y: pts.y2, rotate: Math.atan2(pts.y2 - pts.cy2, pts.x2 - pts.cx2) * 180 / Math.PI };
@@ -111,7 +110,7 @@ const DependencyLines = memo(function DependencyLines({
       result.push({ dep, path, arrow, highlight, id: dep.id, color });
     }
     return result;
-  }, [dependencies, taskMap, rowIdxMap, axisStart, viewScale, pixelPerUnit, rowHeight, hoveredTaskId, selectedTaskId]);
+  }, [dependencies, taskMap, rowIdxMap, axisStart, viewScale, pixelPerUnit, rowHeight, hoveredTaskId, selectedTaskId, currentProject?.timezone]);
 
   const mouseX = mousePos ? mousePos.x + scrollLeft : 0;
   const mouseY = mousePos ? mousePos.y + scrollTop : 0;
@@ -123,7 +122,6 @@ const DependencyLines = memo(function DependencyLines({
       className="absolute inset-0 pointer-events-none overflow-visible z-10"
       width={totalWidth}
       height={totalHeight}
-      style={{ transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` }}
     >
       <defs>
         {['#64748b', '#0ea5e9', '#f97316', '#a855f7', '#f59e0b'].map(c => (
@@ -171,7 +169,7 @@ const DependencyLines = memo(function DependencyLines({
       </g>
       {startTask && startRowIdx !== undefined && mousePos && (() => {
         const yFrom = startRowIdx * rowHeight + rowHeight / 2;
-        const fromEnd = dateToPixel(startTask.endDate, axisStart, viewScale, pixelPerUnit) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
+        const fromEnd = dateToPixel(startTask.endDate, axisStart, viewScale, pixelPerUnit, currentProject?.timezone) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
         const x1 = fromEnd - 2;
         const path = `M ${x1} ${yFrom} C ${x1 + 20} ${yFrom}, ${mouseX - 20} ${mouseY}, ${mouseX} ${mouseY}`;
         return (
@@ -188,7 +186,7 @@ const DependencyLines = memo(function DependencyLines({
     const startTask = taskMap.get(_dep.fromTaskId);
     const startIdx = rowIdxMap.get(_dep.fromTaskId);
     if (!startTask || startIdx === undefined) return 0;
-    const fromEnd = dateToPixel(startTask.endDate, axisStart, viewScale, pixelPerUnit) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
+    const fromEnd = dateToPixel(startTask.endDate, axisStart, viewScale, pixelPerUnit, currentProject?.timezone) + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30);
     return fromEnd - 2;
   }
   function startY(_dep: Dependency): number {

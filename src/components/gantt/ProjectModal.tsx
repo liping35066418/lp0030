@@ -23,10 +23,10 @@ const ProjectModal = () => {
   const { showProjectModal, set, createProject, currentProject, updateProject, deleteProject, fetchProjects, projects } = useGanttStore();
   const [form, setForm] = useState({ name: '', description: '', timezone: 'UTC', startDate: '', endDate: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const initRef = useRef(false);
+  const prevShowRef = useRef(false);
 
   useEffect(() => {
-    if (showProjectModal && !initRef.current) {
+    if (showProjectModal && !prevShowRef.current) {
       if (currentProject) {
         setForm({
           name: currentProject.name,
@@ -46,9 +46,8 @@ const ProjectModal = () => {
         });
         setEditingId(null);
       }
-      initRef.current = true;
     }
-    if (!showProjectModal) initRef.current = false;
+    prevShowRef.current = showProjectModal;
   }, [showProjectModal, currentProject]);
 
   if (!showProjectModal) return null;
@@ -63,14 +62,11 @@ const ProjectModal = () => {
         endDate: new Date(form.endDate).toISOString(),
       });
     } else {
-      const id = await createProject({
+      await createProject({
         ...form,
         startDate: new Date(form.startDate).toISOString(),
         endDate: new Date(form.endDate).toISOString(),
       });
-      if (id) {
-        await useGanttStore.getState().fetchProjectDetail(id);
-      }
     }
     set('showProjectModal', false);
     await fetchProjects();

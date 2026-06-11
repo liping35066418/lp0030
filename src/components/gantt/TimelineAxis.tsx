@@ -5,11 +5,11 @@ import { useGanttStore } from '@/store/ganttStore';
 import { cn } from '@/lib/utils';
 
 const TimelineAxis = memo(function TimelineAxis() {
-  const { viewScale, pixelPerUnit, axisStart, axisEnd, scrollLeft, sidebarWidth } = useGanttStore();
+  const { viewScale, pixelPerUnit, axisStart, axisEnd, currentProject } = useGanttStore();
 
   const { major, minor, totalWidth } = useMemo(
-    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit),
-    [axisStart, axisEnd, viewScale, pixelPerUnit],
+    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone),
+    [axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone],
   );
 
   const weekendSet = useMemo(() => {
@@ -22,8 +22,8 @@ const TimelineAxis = memo(function TimelineAxis() {
   }, [minor]);
 
   return (
-    <div className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/80 select-none" style={{ marginLeft: sidebarWidth }}>
-      <div className="relative" style={{ width: totalWidth, transform: `translateX(${-scrollLeft}px)` }}>
+    <div className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/80 select-none">
+      <div className="relative" style={{ width: totalWidth }}>
         <div className="flex h-8 border-b border-slate-700/60">
           {major.map((t: TimeTick) => (
             <div

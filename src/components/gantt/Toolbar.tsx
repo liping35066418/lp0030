@@ -56,7 +56,7 @@ const Toolbar = memo(function Toolbar() {
         </select>
         <button
           className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-colors"
-          onClick={() => set('showProjectModal', true)}
+          onClick={() => { batchSet({ showProjectModal: true, currentProject: null }); }}
           title="新建项目"
         >
           <FolderPlus size={16} />

@@ -8,7 +8,6 @@ import TaskSidebar from './TaskSidebar';
 import TaskBarsLayer from './TaskBars';
 import DependencyLines from './DependencyLines';
 import GridBackground from './GridBackground';
-import ProjectModal from './ProjectModal';
 import TaskModal from './TaskModal';
 import SnapshotModal from './SnapshotModal';
 import Toast from './Toast';
@@ -27,9 +26,10 @@ export default function GanttChart({ onBackToList }: Props) {
   const {
     currentProject, flatTasks, tasks, dependencies, rowHeight, sidebarWidth,
     viewScale, axisStart, axisEnd, pixelPerUnit,
-    set, updateTask, reorderTasks, refreshCurrentProject,
+    updateTask, reorderTasks, refreshCurrentProject,
     batchSet, depCreateMode,
   } = useGanttStore();
+  void tasks;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollSyncRef = useRef<{ syncing: boolean; source: string | null }>({ syncing: false, source: null });
@@ -43,10 +43,13 @@ export default function GanttChart({ onBackToList }: Props) {
   const [depClickState, setDepClickState] = useState<{ fromId: string | null; mouseDown: boolean }>({ fromId: null, mouseDown: false });
   const [previewRect, setPreviewRect] = useState<DOMRect | null>(null);
   void depClickState;
+  void onDepBarHover;
+  void setOnDepBarHover;
+  void setDepClickState;
 
   const { totalWidth } = useMemo(
-    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit),
-    [axisStart, axisEnd, viewScale, pixelPerUnit],
+    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone),
+    [axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone],
   );
   const totalHeight = flatTasks.length * rowHeight;
 
@@ -103,23 +106,23 @@ export default function GanttChart({ onBackToList }: Props) {
       let newEnd = new Date(found.task.endDate);
 
       if (dragging.type === 'move') {
-        const deltaPx = xInGantt - dateToPixel(found.task.startDate, g.axisStart, g.viewScale, g.pixelPerUnit);
+        const deltaPx = xInGantt - dateToPixel(found.task.startDate, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
         const deltaDays = Math.round(deltaPx / (g.pixelPerUnit / (g.viewScale === 'day' ? 1 : g.viewScale === 'week' ? 7 : 30)));
-        newStart = snapToDate(addDays(found.task.startDate, deltaDays), g.viewScale, 'round');
-        const dur = diffDays(found.task.startDate, found.task.endDate) + 1;
-        newEnd = snapToDate(addDays(newStart, dur - 1), g.viewScale, 'round');
+        newStart = snapToDate(addDays(found.task.startDate, deltaDays, g.currentProject?.timezone), g.viewScale, 'round', g.currentProject?.timezone);
+        const dur = diffDays(found.task.startDate, found.task.endDate, g.currentProject?.timezone) + 1;
+        newEnd = snapToDate(addDays(newStart, dur - 1, g.currentProject?.timezone), g.viewScale, 'round', g.currentProject?.timezone);
       } else if (dragging.type === 'resize-left') {
-        const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit);
-        newStart = snapToDate(rawDate, g.viewScale, 'round');
+        const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+        newStart = snapToDate(rawDate, g.viewScale, 'round', g.currentProject?.timezone);
         if (newStart > new Date(found.task.endDate)) newStart = new Date(found.task.endDate);
       } else if (dragging.type === 'resize-right') {
-        const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit);
-        newEnd = snapToDate(rawDate, g.viewScale, 'round');
+        const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+        newEnd = snapToDate(rawDate, g.viewScale, 'round', g.currentProject?.timezone);
         if (newEnd < new Date(found.task.startDate)) newEnd = new Date(found.task.startDate);
       } else if (dragging.type === 'row') {
         const targetRow = Math.max(0, Math.min(flatTasks.length - 1, Math.floor(yInGantt / g.rowHeight)));
-        const left = dateToPixel(newStart, g.axisStart, g.viewScale, g.pixelPerUnit);
-        const w = dateToPixel(newEnd, g.axisStart, g.viewScale, g.pixelPerUnit) + g.pixelPerUnit / 30 - left;
+        const left = dateToPixel(newStart, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+        const w = dateToPixel(newEnd, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone) + g.pixelPerUnit / 30 - left;
         setDragPreview({ left, width: w, row: targetRow });
         return;
       }
@@ -133,8 +136,8 @@ export default function GanttChart({ onBackToList }: Props) {
           return;
         }
         setValidationMsg(null);
-        const left = dateToPixel(newStart, g.axisStart, g.viewScale, g.pixelPerUnit);
-        const w = dateToPixel(newEnd, g.axisStart, g.viewScale, g.pixelPerUnit) + g.pixelPerUnit / 30 - left;
+        const left = dateToPixel(newStart, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+        const w = dateToPixel(newEnd, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone) + g.pixelPerUnit / 30 - left;
         setDragPreview({ left, width: w, row: found.idx });
       } catch (err) {
         setValidationMsg((err as Error).message);
@@ -179,18 +182,18 @@ export default function GanttChart({ onBackToList }: Props) {
             const xInGantt = e.clientX - rect.left - sidebarWidth + g.scrollLeft;
             const yInGantt = e.clientY - rect.top + g.scrollTop;
             if (dragging.type === 'move') {
-              const deltaPx = xInGantt - dateToPixel(found.task.startDate, g.axisStart, g.viewScale, g.pixelPerUnit);
+              const deltaPx = xInGantt - dateToPixel(found.task.startDate, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
               const deltaDays = Math.round(deltaPx / (g.pixelPerUnit / (g.viewScale === 'day' ? 1 : g.viewScale === 'week' ? 7 : 30)));
-              newStart = snapToDate(addDays(found.task.startDate, deltaDays), g.viewScale, 'round');
-              const dur = diffDays(found.task.startDate, found.task.endDate) + 1;
-              newEnd = snapToDate(addDays(newStart, dur - 1), g.viewScale, 'round');
+              newStart = snapToDate(addDays(found.task.startDate, deltaDays, g.currentProject?.timezone), g.viewScale, 'round', g.currentProject?.timezone);
+              const dur = diffDays(found.task.startDate, found.task.endDate, g.currentProject?.timezone) + 1;
+              newEnd = snapToDate(addDays(newStart, dur - 1, g.currentProject?.timezone), g.viewScale, 'round', g.currentProject?.timezone);
             } else if (dragging.type === 'resize-left') {
-              const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit);
-              newStart = snapToDate(rawDate, g.viewScale, 'round');
+              const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+              newStart = snapToDate(rawDate, g.viewScale, 'round', g.currentProject?.timezone);
               if (newStart > newEnd) newStart = newEnd;
             } else if (dragging.type === 'resize-right') {
-              const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit);
-              newEnd = snapToDate(rawDate, g.viewScale, 'round');
+              const rawDate = pixelToDate(xInGantt, g.axisStart, g.viewScale, g.pixelPerUnit, g.currentProject?.timezone);
+              newEnd = snapToDate(rawDate, g.viewScale, 'round', g.currentProject?.timezone);
               if (newEnd < newStart) newEnd = newStart;
             } else if (dragging.type === 'row') {
               const targetRow = Math.max(0, Math.min(flatTasks.length - 1, Math.floor(yInGantt / g.rowHeight)));
@@ -262,7 +265,9 @@ export default function GanttChart({ onBackToList }: Props) {
     else pos = 'inside';
     setRowDrag(prev => ({ ...prev, overId: id, position: pos }));
   };
-  const handleRowDrop = async (_e: React.DragEvent, _id: string) => {
+  const handleRowDrop = async (e: React.DragEvent, id: string) => {
+    void e;
+    void id;
     if (!rowDrag.id || !rowDrag.overId || !rowDrag.position) return;
     const srcId = rowDrag.id;
     const targetId = rowDrag.overId;
@@ -294,7 +299,8 @@ export default function GanttChart({ onBackToList }: Props) {
   };
   const handleRowDragEnd = () => setRowDrag({ id: null, overId: null, position: null });
 
-  const handleDepClick = (taskId: string, _e: React.MouseEvent) => {
+  const handleDepClick = (taskId: string, e: React.MouseEvent) => {
+    void e;
     if (!currentProject) return;
     if (!depCreateMode.active) {
       batchSet({ depCreateMode: { from: taskId, active: true } });
@@ -336,8 +342,6 @@ export default function GanttChart({ onBackToList }: Props) {
     );
   }
 
-  const { scrollLeft, scrollTop } = useGanttStore.getState();
-
   return (
     <div
       ref={containerRef}
@@ -374,7 +378,7 @@ export default function GanttChart({ onBackToList }: Props) {
         )}
 
         <div className="absolute inset-0 flex flex-col" style={{ paddingTop: 56 }}>
-          <div className="relative shrink-0" style={{ height: 60, zIndex: 20 }}>
+          <div className="sticky top-0 z-30 shrink-0" style={{ height: 60, paddingLeft: sidebarWidth }}>
             <TimelineAxis />
           </div>
           <div className="relative flex-1 overflow-hidden">
@@ -390,7 +394,7 @@ export default function GanttChart({ onBackToList }: Props) {
               style={{ scrollbarWidth: 'thin' }}
             >
               <div className="relative" style={{ width: totalWidth + sidebarWidth, minHeight: Math.max(totalHeight + 60, 400) }}>
-                <div className="absolute left-0 top-0 bottom-0" style={{ width: sidebarWidth, zIndex: 5 }}>
+                <div className="sticky left-0 top-0 z-20" style={{ width: sidebarWidth }}>
                   <TaskSidebar
                     totalHeight={totalHeight}
                     flatList={flatTasks as FlatTask[]}
@@ -406,16 +410,12 @@ export default function GanttChart({ onBackToList }: Props) {
                   <GridBackground
                     totalWidth={totalWidth}
                     totalHeight={totalHeight}
-                    scrollLeft={scrollLeft}
-                    scrollTop={scrollTop}
                     rowCount={flatTasks.length}
                   />
                   <DependencyLines
                     flatList={flatTasks as FlatTask[]}
                     totalWidth={totalWidth}
                     totalHeight={totalHeight}
-                    scrollLeft={scrollLeft}
-                    scrollTop={scrollTop}
                     depFromId={depCreateMode.from}
                     mousePos={mousePos}
                   />
@@ -427,8 +427,6 @@ export default function GanttChart({ onBackToList }: Props) {
                     onDepClick={handleDepClick}
                     totalWidth={totalWidth}
                     totalHeight={totalHeight}
-                    scrollLeft={scrollLeft}
-                    scrollTop={scrollTop}
                     dragging={dragging}
                     previewRect={previewRect}
                     setPreviewRect={setPreviewRect}
@@ -437,8 +435,8 @@ export default function GanttChart({ onBackToList }: Props) {
                     <div
                       className="absolute z-30 pointer-events-none border-2 border-dashed border-white/70 rounded-md"
                       style={{
-                        left: dragPreview.left - scrollLeft,
-                        top: dragPreview.row * rowHeight - scrollTop + 6,
+                        left: dragPreview.left,
+                        top: dragPreview.row * rowHeight + 6,
                         width: dragPreview.width,
                         height: rowHeight - 12,
                         background: 'rgba(59,130,246,0.18)',
@@ -457,7 +455,6 @@ export default function GanttChart({ onBackToList }: Props) {
         </div>
       </div>
 
-      <ProjectModal />
       <TaskModal />
       <SnapshotModal />
       <Toast />

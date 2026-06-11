@@ -12,7 +12,7 @@ interface Props {
 
 export default function ProjectList({ onOpenProject }: Props) {
   const {
-    projects, fetchProjects, fetchProjectDetail, deleteProject, createProject, set, tasks,
+    projects, fetchProjects, fetchProjectDetail, deleteProject, createProject, set, tasks, batchSet,
   } = useGanttStore();
   const [search, setSearch] = useState('');
 
@@ -74,7 +74,7 @@ export default function ProjectList({ onOpenProject }: Props) {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => set('showProjectModal', true)}
+                onClick={() => { batchSet({ showProjectModal: true, currentProject: null }); }}
                 className="px-5 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-sm font-semibold text-slate-200 transition-all flex items-center gap-2"
               >
                 <Plus size={16} /> 新建项目
@@ -140,7 +140,7 @@ export default function ProjectList({ onOpenProject }: Props) {
               <p className="text-slate-500 text-sm mt-1 mb-5">点击右上角创建一个新项目，或生成示例项目快速体验</p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => set('showProjectModal', true)}
+                  onClick={() => { batchSet({ showProjectModal: true, currentProject: null }); }}
                   className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-semibold text-white"
                 >
                   新建项目

@@ -44,7 +44,7 @@ const TaskBar = memo(function TaskBar({
   const statusCfg = STATUS_CONFIG[task.status];
   const typeCfg = TYPE_CONFIG[task.type];
 
-  const startX = dateToPixel(task.startDate, axisStart, viewScale, pixelPerUnit);
+  const startX = dateToPixel(task.startDate, axisStart, viewScale, pixelPerUnit, currentProject?.timezone);
 
   void barLeft;
   void startX;
@@ -69,13 +69,13 @@ const TaskBar = memo(function TaskBar({
   };
 
   const topPad = (rowHeight - (isMilestone ? 22 : 26)) / 2;
-  const innerTopPad = isMilestone ? topPad : topPad + 2;
 
   return (
     <div
       className="absolute"
       style={{ left: actualLeft, top: rowIndex * rowHeight + (isMilestone ? topPad : topPad), width: actualWidth, height: isMilestone ? 22 : 26 }}
-      onMouseEnter={(e) => {
+      onMouseEnter={(_e) => {
+        void _e;
         if (barRef.current && isHover === false) {
           setPreviewRect(barRef.current.getBoundingClientRect());
         }
@@ -185,7 +185,7 @@ const TaskBar = memo(function TaskBar({
       {isHover && !isMilestone && (
         <div className="absolute -bottom-6 left-0 right-0 flex justify-center pointer-events-none z-10">
           <div className="bg-slate-900/95 border border-slate-700 rounded px-2 py-1 text-[10px] text-slate-300 whitespace-nowrap shadow-lg backdrop-blur-sm">
-            {task.name} · {formatShortDate(task.startDate)} → {formatShortDate(task.endDate)} · {task.duration}天
+            {task.name} · {formatShortDate(task.startDate, currentProject?.timezone)} → {formatShortDate(task.endDate, currentProject?.timezone)} · {task.duration}天
           </div>
         </div>
       )}
@@ -254,8 +254,6 @@ interface Props {
   onDepClick: (taskId: string, e: React.MouseEvent) => void;
   totalWidth: number;
   totalHeight: number;
-  scrollLeft: number;
-  scrollTop: number;
   dragging: DraggingState;
   previewRect: DOMRect | null;
   setPreviewRect: (r: DOMRect | null) => void;
@@ -263,9 +261,9 @@ interface Props {
 
 const TaskBarsLayer = memo(function TaskBarsLayer({
   flatList, onMouseDown, onDepHoverId, setOnDepHoverId, onDepClick,
-  totalWidth, totalHeight, scrollLeft, scrollTop, dragging, previewRect, setPreviewRect,
+  totalWidth, totalHeight, dragging, previewRect, setPreviewRect,
 }: Props) {
-  const { rowHeight, viewScale, axisStart, pixelPerUnit, filterGroupId, searchText } = useGanttStore();
+  const { viewScale, axisStart, pixelPerUnit, filterGroupId, searchText, currentProject } = useGanttStore();
 
   const bars = useMemo(() => {
     const result: Array<{ task: FlatTask; left: number; width: number; row: number }> = [];
@@ -277,18 +275,18 @@ const TaskBarsLayer = memo(function TaskBarsLayer({
     for (let i = 0; i < flatList.length; i++) {
       const t = flatList[i];
       if (!matches(t)) continue;
-      const left = dateToPixel(t.startDate, axisStart, viewScale, pixelPerUnit);
-      const right = dateToPixel(t.endDate, axisStart, viewScale, pixelPerUnit);
+      const left = dateToPixel(t.startDate, axisStart, viewScale, pixelPerUnit, currentProject?.timezone);
+      const right = dateToPixel(t.endDate, axisStart, viewScale, pixelPerUnit, currentProject?.timezone);
       const width = t.type === 'milestone' ? 0 : Math.max(0, right - left + pixelPerUnit / (viewScale === 'day' ? 1 : viewScale === 'week' ? 7 : 30));
       result.push({ task: t, left, width, row: i });
     }
     return result;
-  }, [flatList, axisStart, viewScale, pixelPerUnit, filterGroupId, searchText]);
+  }, [flatList, axisStart, viewScale, pixelPerUnit, filterGroupId, searchText, currentProject?.timezone]);
 
   return (
     <div
       className="relative"
-      style={{ width: totalWidth, minHeight: totalHeight, transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` }}
+      style={{ width: totalWidth, minHeight: totalHeight }}
       onMouseMove={(e) => {
         if (!dragging.type) {
           const target = e.target as HTMLElement;

@@ -25,7 +25,7 @@ const SidebarRow = memo(function SidebarRow({
 } & Props) {
   const {
     toggleExpand, selectedTaskId, hoveredTaskId,
-    set, rowHeight, tags, groups, searchText,
+    set, rowHeight, tags, groups, searchText, currentProject,
   } = useGanttStore();
   const taskTags = useMemo(() => parseTags(task.tags).map(id => tags.find(t => t.id === id)).filter(Boolean) as Array<{ id: string; name: string; color: string }>, [task.tags, tags]);
   const group = groups.find(g => g.id === task.groupId);
@@ -123,7 +123,7 @@ const SidebarRow = memo(function SidebarRow({
         ))}
       </div>
       <div className="shrink-0 w-14 text-right text-[11px] text-slate-500 pr-2 tabular-nums">
-        {formatDate(task.startDate, 'MM/DD')}
+        {formatDate(task.startDate, 'MM/DD', currentProject?.timezone)}
       </div>
       <div className="shrink-0 w-16 text-right text-[11px] pr-3">
         <span className={cn(
@@ -143,12 +143,12 @@ interface SidebarProps extends Props {
 }
 
 const TaskSidebar = memo(function TaskSidebar(props: SidebarProps) {
-  const { sidebarWidth, rowHeight, groups, set, flatTasks, showTaskModal } = useGanttStore();
+  const { sidebarWidth, groups, set, showTaskModal, scrollTop } = useGanttStore();
   const { totalHeight, flatList } = props;
 
   return (
-    <div className="sticky left-0 z-20 bg-slate-900 border-r border-slate-700/80 flex flex-col" style={{ width: sidebarWidth, position: 'absolute', top: 0, left: 0, height: '100%' }}>
-      <div className="sticky top-0 z-20 flex h-[60px] items-center border-b border-slate-700/80 bg-slate-900 px-3 gap-2">
+    <div className="sticky left-0 z-20 bg-slate-900 border-r border-slate-700/80 flex flex-col" style={{ width: sidebarWidth, height: totalHeight + 120 }}>
+      <div className="sticky top-0 z-20 flex h-[60px] items-center border-b border-slate-700/80 bg-slate-900 px-3 gap-2" style={{ transform: `translateY(${scrollTop}px)` }}>
         <div className="flex-1 text-xs font-semibold text-slate-300 uppercase tracking-wide">任务结构</div>
         <button
           className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
@@ -157,13 +157,13 @@ const TaskSidebar = memo(function TaskSidebar(props: SidebarProps) {
           + 新建
         </button>
       </div>
-      <div className="flex text-[11px] text-slate-400 border-b border-slate-700/40 px-2 py-1.5 bg-slate-800/40 sticky top-[60px] z-10">
+      <div className="flex text-[11px] text-slate-400 border-b border-slate-700/40 px-2 py-1.5 bg-slate-800/40 sticky top-[60px] z-10" style={{ transform: `translateY(${scrollTop}px)` }}>
         <div className="w-8"></div>
         <div className="flex-1">名称 / 分组</div>
         <div className="w-14 text-right">开始</div>
         <div className="w-16 text-right pr-2">进度</div>
       </div>
-      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: 'thin' }}>
+      <div className="flex-1" style={{ scrollbarWidth: 'thin' }}>
         <div style={{ minHeight: totalHeight }}>
           {flatList.map((t, idx) => (
             <SidebarRow key={t.id} task={t} rowIndex={idx} {...props} />
@@ -173,7 +173,7 @@ const TaskSidebar = memo(function TaskSidebar(props: SidebarProps) {
           )}
         </div>
       </div>
-      <div className="border-t border-slate-700/60 p-2 bg-slate-900 text-[11px] text-slate-400 flex items-center gap-2">
+      <div className="sticky bottom-0 border-t border-slate-700/60 p-2 bg-slate-900 text-[11px] text-slate-400 flex items-center gap-2" style={{ transform: `translateY(${scrollTop}px)` }}>
         <span>筛选分组:</span>
         <select
           className="flex-1 bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 outline-none"

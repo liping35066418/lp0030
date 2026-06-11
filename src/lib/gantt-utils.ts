@@ -1,7 +1,25 @@
 import type { ViewScale, Task, TreeNode, FlatTask } from '@/types/gantt';
 
-export function formatDate(date: Date | string, fmt = 'YYYY-MM-DD'): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+export function getTimezoneOffset(timezone: string, date: Date | string): number {
+  if (!timezone || timezone === 'UTC') return 0;
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    const utcDate = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(d.toLocaleString('en-US', { timeZone: timezone }));
+    return (utcDate.getTime() - tzDate.getTime());
+  } catch {
+    return 0;
+  }
+}
+
+export function toTimezoneDate(date: Date | string, timezone: string): Date {
+  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+  const offset = getTimezoneOffset(timezone, d);
+  return new Date(d.getTime() + offset);
+}
+
+export function formatDate(date: Date | string, fmt = 'YYYY-MM-DD', timezone?: string): string {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : date);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -17,28 +35,28 @@ export function formatDate(date: Date | string, fmt = 'YYYY-MM-DD'): string {
     .replace('ss', ss);
 }
 
-export function formatShortDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+export function formatShortDate(date: Date | string, timezone?: string): string {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : date);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function addDays(date: Date | string, days: number): Date {
-  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+export function addDays(date: Date | string, days: number, timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : new Date(date.getTime()));
   d.setDate(d.getDate() + days);
   return d;
 }
 
-export function diffDays(a: Date | string, b: Date | string): number {
-  const d1 = typeof a === 'string' ? new Date(a) : a;
-  const d2 = typeof b === 'string' ? new Date(b) : b;
+export function diffDays(a: Date | string, b: Date | string, timezone?: string): number {
+  const d1 = timezone ? toTimezoneDate(a, timezone) : (typeof a === 'string' ? new Date(a) : a);
+  const d2 = timezone ? toTimezoneDate(b, timezone) : (typeof b === 'string' ? new Date(b) : b);
   const MS = 1000 * 60 * 60 * 24;
   const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
   const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
   return Math.round((utc2 - utc1) / MS);
 }
 
-export function startOfWeek(date: Date | string): Date {
-  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+export function startOfWeek(date: Date | string, timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : new Date(date.getTime()));
   const day = d.getDay();
   const diff = (day + 6) % 7;
   d.setDate(d.getDate() - diff);
@@ -46,28 +64,31 @@ export function startOfWeek(date: Date | string): Date {
   return d;
 }
 
-export function startOfMonth(date: Date | string): Date {
-  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+export function startOfMonth(date: Date | string, timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : new Date(date.getTime()));
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
-export function startOfQuarter(date: Date | string): Date {
-  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+export function startOfQuarter(date: Date | string, timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : new Date(date.getTime()));
   const q = Math.floor(d.getMonth() / 3);
   return new Date(d.getFullYear(), q * 3, 1);
 }
 
-export function startOfScale(date: Date | string, scale: ViewScale): Date {
+export function startOfScale(date: Date | string, scale: ViewScale, timezone?: string): Date {
   switch (scale) {
-    case 'day': return typeof date === 'string' ? new Date(date.slice(0, 10)) : new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    case 'week': return startOfWeek(date);
-    case 'month': return startOfMonth(date);
-    case 'quarter': return startOfQuarter(date);
+    case 'day': {
+      const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date.slice(0, 10)) : new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    case 'week': return startOfWeek(date, timezone);
+    case 'month': return startOfMonth(date, timezone);
+    case 'quarter': return startOfQuarter(date, timezone);
   }
 }
 
-export function addScale(date: Date | string, scale: ViewScale, n = 1): Date {
-  const d = typeof date === 'string' ? new Date(date) : new Date(date.getTime());
+export function addScale(date: Date | string, scale: ViewScale, n = 1, timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : new Date(date.getTime()));
   switch (scale) {
     case 'day': d.setDate(d.getDate() + n); break;
     case 'week': d.setDate(d.getDate() + n * 7); break;
@@ -92,29 +113,30 @@ export function generateTimeTicks(
   endDate: Date,
   scale: ViewScale,
   pixelPerUnit: number,
+  timezone?: string,
 ): { major: TimeTick[]; minor: TimeTick[]; totalWidth: number } {
   const majors: TimeTick[] = [];
   const minors: TimeTick[] = [];
 
-  let cursor = startOfScale(startDate, scale);
+  let cursor = startOfScale(startDate, scale, timezone);
   let x = 0;
-  const end = new Date(endDate);
+  const end = toTimezoneDate(endDate, timezone || 'UTC');
   end.setDate(end.getDate() + 2);
 
   while (cursor <= end) {
-    const nextCursor = addScale(cursor, scale, 1);
+    const nextCursor = addScale(cursor, scale, 1, timezone);
     const majorWidth = pixelPerUnit;
     let label = '';
     let subLabel = '';
 
     switch (scale) {
       case 'day':
-        label = formatShortDate(cursor);
+        label = formatShortDate(cursor, timezone);
         subLabel = ['日', '一', '二', '三', '四', '五', '六'][cursor.getDay()];
         break;
       case 'week': {
-        const wEnd = addDays(cursor, 6);
-        label = `${formatShortDate(cursor)} - ${formatShortDate(wEnd)}`;
+        const wEnd = addDays(cursor, 6, timezone);
+        label = `${formatShortDate(cursor, timezone)} - ${formatShortDate(wEnd, timezone)}`;
         subLabel = `${cursor.getFullYear()}年第${Math.ceil(((cursor.getDate() + new Date(cursor.getFullYear(), cursor.getMonth(), 1).getDay() - 1) / 7)) + 1}周`;
         break;
       }
@@ -149,7 +171,7 @@ export function generateTimeTicks(
       });
     } else if (scale === 'week') {
       for (let i = 0; i < 7; i++) {
-        const d = addDays(cursor, i);
+        const d = addDays(cursor, i, timezone);
         if (d > end) break;
         minors.push({
           key: `m-${d.getTime()}`,
@@ -205,11 +227,11 @@ export function dateToPixel(
   axisStart: Date,
   scale: ViewScale,
   pixelPerUnit: number,
+  timezone?: string,
 ): number {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  const start = startOfScale(axisStart, scale);
-  const MS = 1000 * 60 * 60 * 24;
-  const totalMs = new Date(addScale(start, scale, 1)).getTime() - start.getTime();
+  const d = timezone ? toTimezoneDate(date, timezone) : (typeof date === 'string' ? new Date(date) : date);
+  const start = startOfScale(axisStart, scale, timezone);
+  const totalMs = new Date(addScale(start, scale, 1, timezone)).getTime() - start.getTime();
   const unitCount = (d.getTime() - start.getTime()) / totalMs;
   return unitCount * pixelPerUnit;
 }
@@ -219,27 +241,43 @@ export function pixelToDate(
   axisStart: Date,
   scale: ViewScale,
   pixelPerUnit: number,
+  timezone?: string,
 ): Date {
-  const start = startOfScale(axisStart, scale);
+  const start = startOfScale(axisStart, scale, timezone);
   const unitCount = px / pixelPerUnit;
-  const totalMs = new Date(addScale(start, scale, 1)).getTime() - start.getTime();
-  return new Date(start.getTime() + unitCount * totalMs);
+  const totalMs = new Date(addScale(start, scale, 1, timezone)).getTime() - start.getTime();
+  const tzDate = new Date(start.getTime() + unitCount * totalMs);
+  if (timezone && timezone !== 'UTC') {
+    const offset = getTimezoneOffset(timezone, tzDate);
+    return new Date(tzDate.getTime() - offset);
+  }
+  return tzDate;
 }
 
-export function snapToDate(date: Date, scale: ViewScale, round: 'floor' | 'round' | 'ceil' = 'round'): Date {
-  const d = new Date(date);
+export function snapToDate(date: Date, scale: ViewScale, round: 'floor' | 'round' | 'ceil' = 'round', timezone?: string): Date {
+  const d = timezone ? toTimezoneDate(date, timezone) : new Date(date);
   switch (scale) {
     case 'day': {
       const ms = d.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const frac = ms / (24 * 3600 * 1000);
       const off = round === 'floor' ? Math.floor(frac) : round === 'ceil' ? Math.ceil(frac) : Math.round(frac);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate() + off);
+      const result = new Date(d.getFullYear(), d.getMonth(), d.getDate() + off);
+      if (timezone && timezone !== 'UTC') {
+        const offset = getTimezoneOffset(timezone, result);
+        return new Date(result.getTime() - offset);
+      }
+      return result;
     }
     case 'week': {
-      const sow = startOfWeek(d);
+      const sow = startOfWeek(d, timezone);
       const frac = (d.getTime() - sow.getTime()) / (7 * 24 * 3600 * 1000);
       const off = round === 'floor' ? Math.floor(frac) : round === 'ceil' ? Math.ceil(frac) : Math.round(frac);
-      return addDays(sow, off * 7);
+      const result = addDays(sow, off * 7, timezone);
+      if (timezone && timezone !== 'UTC') {
+        const offset = getTimezoneOffset(timezone, result);
+        return new Date(result.getTime() - offset);
+      }
+      return result;
     }
     default: return d;
   }

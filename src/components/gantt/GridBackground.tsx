@@ -3,22 +3,21 @@ import { generateTimeTicks } from '@/lib/gantt-utils';
 import { useGanttStore } from '@/store/ganttStore';
 
 const GridBackground = memo(function GridBackground({
-  totalWidth, totalHeight, scrollLeft, scrollTop, rowCount,
-}: { totalWidth: number; totalHeight: number; scrollLeft: number; scrollTop: number; rowCount: number }) {
-  const { viewScale, pixelPerUnit, axisStart, axisEnd, rowHeight, sidebarWidth } = useGanttStore();
+  totalWidth, totalHeight, rowCount,
+}: { totalWidth: number; totalHeight: number; rowCount: number }) {
+  const { viewScale, pixelPerUnit, axisStart, axisEnd, rowHeight, currentProject } = useGanttStore();
   const { minor } = useMemo(
-    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit),
-    [axisStart, axisEnd, viewScale, pixelPerUnit],
+    () => generateTimeTicks(axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone),
+    [axisStart, axisEnd, viewScale, pixelPerUnit, currentProject?.timezone],
   );
 
   return (
     <div
       className="absolute inset-0 pointer-events-none"
-      style={{ left: sidebarWidth }}
     >
       <div
         className="absolute"
-        style={{ width: totalWidth, minHeight: totalHeight, transform: `translate(${-scrollLeft}px, ${-scrollTop}px)` }}
+        style={{ width: totalWidth, minHeight: totalHeight }}
       >
         <svg width={totalWidth} height={totalHeight} className="overflow-visible">
           {minor.map((t, i) => {
